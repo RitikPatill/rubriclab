@@ -6,13 +6,27 @@ Rubric-driven evaluation harness for LLM agents. Point it at an agent, give it a
 
 Vibes-based testing doesn't scale: the agent works on three hand-picked examples, then quietly regresses on the fourth. Existing tools are either heavyweight SaaS observability platforms that want your data, or raw `pytest` matchers that can't grade open-ended outputs. RubricLab sits in the middle — rubric-driven LLM-as-judge scoring with a run-history UI so regressions are obvious at a glance.
 
-## What works (M2 — rubric + dataset schemas)
+## What works (M3 — agent adapter + sample agent)
+
+- **`AgentAdapter` protocol** — `run(input: str) -> AgentResult` contract. `AgentResult` carries `output: str` and `trace: list[TraceEvent]`. `TraceEvent` records `tool_call`, `tool_result`, `text`, or `error` events with ISO timestamps. See [`apps/api/src/api/adapters/`](apps/api/src/api/adapters/).
+- **`InProcessAdapter`** — wraps any Python callable `fn(input) -> AgentResult | str` for in-process evaluation. Normalises plain `str` returns automatically.
+- **`HttpAdapter`** — POSTs `{"input": "..."}` to any HTTP endpoint and validates the JSON response as `AgentResult`; supports custom headers and configurable timeout.
+- **Sample support agent** — [`examples/support-agent/agent.py`](examples/support-agent/agent.py) uses the Anthropic SDK with three fake tools (`kb_search`, `order_lookup`, `escalate_to_human`). All tool responses are deterministic stubs — no real integrations needed for demos. Requires `ANTHROPIC_API_KEY` only for the Claude API call.
+
+    ```bash
+    # Run the sample agent from the repo root
+    cd apps/api && python -m pip install -e ".[dev]"
+    ANTHROPIC_API_KEY=sk-... python ../../examples/support-agent/agent.py "Where is my order #12345?"
+    ```
+
+- **Tests** — 36 tests total (19 adapter + 16 schema + 1 smoke), all green.
+
+### M2 — rubric + dataset schemas (also done)
 
 - **Rubric DSL** — YAML files with named criteria of type `scale` (min/max range) or `bool` (pass/fail, optionally `invert`ed). Each criterion has an `id`, `description`, optional `weight`, and optional `invert` flag. See [`examples/support-agent/rubric.yaml`](examples/support-agent/rubric.yaml).
 - **Dataset format** — JSONL files; one test case per line with `id`, `input`, `expected_behavior`, optional `expected_tool_calls` and `tags`. See [`examples/support-agent/dataset.jsonl`](examples/support-agent/dataset.jsonl).
 - **Pydantic loaders** — `load_rubric(path)` and `load_dataset(path)` validate inputs, wrap errors with line numbers, and detect duplicates.
 - **15-case example dataset** — covers password reset, billing disputes, refunds, shipping, product compatibility, security escalations, and technical support.
-- **Tests** — 16 schema tests + 1 smoke test, all green (`make test`).
 
 ### M1 — scaffold (also done)
 
@@ -29,7 +43,7 @@ Vibes-based testing doesn't scale: the agent works on three hand-picked examples
 - **SQLite** — local, single-file, zero infra
 - **Claude `claude-opus-4-6`** — LLM-as-judge for rubric scoring
 
-> SQLite persistence and the LLM judge are planned. As of M2, the API has Pydantic schema/validation; the web app is scaffold-only.
+> SQLite persistence and the LLM judge are planned. As of M3, the API has Pydantic schema/validation and agent adapters; the web app is scaffold-only.
 
 ## Quickstart
 
@@ -44,7 +58,7 @@ make dev
 
 ### Prerequisites
 
-- Python 3.12+
+- Python 3.11+
 - Node 20+
 - `make`
 - Git Bash or WSL2 (on Windows — the `&` background operator in the Makefile requires a POSIX shell)
@@ -74,9 +88,10 @@ make format    # ruff format + prettier
 |-----------|-------|--------|
 | M1 | Monorepo scaffold, tooling, CI baseline | done |
 | M2 | Rubric + dataset schemas, Pydantic loaders, example files | done |
-| M3 | LLM-as-judge integration, per-criterion scoring, pass/fail verdict | planned |
-| M4 | SQLite persistence, run history API | planned |
-| M5 | Web UI — run list, case drill-down, side-by-side diff | planned |
+| M3 | AgentAdapter protocol, InProcessAdapter, HttpAdapter, sample support agent | done |
+| M4 | LLM-as-judge integration, per-criterion scoring, pass/fail verdict | planned |
+| M5 | SQLite persistence, run history API | planned |
+| M6 | Web UI — run list, case drill-down, side-by-side diff | planned |
 
 <!-- TODO: add M6+ milestones as scope becomes clearer -->
 
