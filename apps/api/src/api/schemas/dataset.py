@@ -1,17 +1,50 @@
 from __future__ import annotations
+
 import json
 from pathlib import Path
-from pydantic import BaseModel, ConfigDict, ValidationError
+from typing import Annotated, Any, Literal
+
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
+
+
+class ExactMatchCheck(BaseModel):
+    type: Literal["exact_match"]
+    value: str
+
+
+class RegexCheck(BaseModel):
+    type: Literal["regex"]
+    pattern: str
+
+
+class JsonSchemaCheck(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+    type: Literal["json_schema"]
+    # Field is called "schema" in JSON but "json_schema" in Python to avoid
+    # shadowing the deprecated Pydantic v2 BaseModel.schema() class method.
+    json_schema: dict[str, Any] = Field(alias="schema")
+
+
+DeterministicCheck = Annotated[
+    ExactMatchCheck | RegexCheck | JsonSchemaCheck,
+    Field(discriminator="type"),
+]
+
 
 class TestCase(BaseModel):
     model_config = ConfigDict(extra="forbid")
+
     id: str
     input: str
     expected_behavior: str
     expected_tool_calls: list[str] | None = None
-    tags: list[str] = []
+    checks: list[DeterministicCheck] = Field(default_factory=list)
+    tags: list[str] = Field(default_factory=list)
 
+
+# Alias kept for backwards compatibility
 DatasetCase = TestCase
+
 
 def load_dataset(path) -> list[TestCase]:
     path = Path(path)
