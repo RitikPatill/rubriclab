@@ -6,6 +6,14 @@ Rubric-driven evaluation harness for LLM agents. Point it at an agent, give it a
 
 Vibes-based testing doesn't scale: the agent works on three hand-picked examples, then quietly regresses on the fourth. Existing tools are either heavyweight SaaS observability platforms that want your data, or raw `pytest` matchers that can't grade open-ended outputs. RubricLab sits in the middle — rubric-driven LLM-as-judge scoring with a run-history UI so regressions are obvious at a glance.
 
+## What works (M5 — REST API + run streaming)
+
+- **Suite CRUD** — `POST /suites` creates a (rubric, dataset) pair; `GET /suites` and `GET /suites/{id}` list and fetch them.
+- **Run management** — `POST /suites/{suite_id}/runs` returns 202 Accepted immediately (run ID + `"pending"` status) and executes the eval in a background thread. Requires `agent_url` and optional `agent_version` in the request body.
+- **Live SSE stream** — `GET /runs/{run_id}/stream` emits `progress` events as each case completes and a final `done` event when the run finishes, using Server-Sent Events (`text/event-stream`).
+- **Typed response models** — [`apps/api/src/api/schemas/api.py`](apps/api/src/api/schemas/api.py) defines `SuiteCreate`, `SuiteResponse`, `RunStartRequest`, `RunStartResponse`, `RunSummary`, `RunDetail`, and `CaseResultResponse`; every endpoint declares a Pydantic `response_model` and FastAPI auto-generates OpenAPI docs at `/docs`.
+- **Integration tests** — `apps/api/tests/test_api.py` covers suite CRUD (including 404 handling), the start-run → poll → assert-scores flow (with a mock runner), and SSE endpoint sanity and 404 handling (5 tests). `apps/api/tests/conftest.py` provides a session-scoped DB initialisation fixture shared across all test modules.
+
 ## What works (M4 — eval runner + LLM judge)
 
 - **Eval runner** — [`apps/api/src/api/runner.py`](apps/api/src/api/runner.py): iterates every test case, invokes the agent adapter, runs deterministic checks, calls the LLM judge, and persists all results to SQLite. Agent exceptions are caught per-case so one bad case never aborts a run.
@@ -18,7 +26,7 @@ Vibes-based testing doesn't scale: the agent works on three hand-picked examples
 - **SQLite persistence** — [`apps/api/src/api/models.py`](apps/api/src/api/models.py) defines `Suite`, `Run`, and `CaseResult`; [`db.py`](apps/api/src/api/db.py) manages the engine and session. Every run is immutable; rows are committed case-by-case so partial results survive a crash. Each run is tagged with `git_sha` and `agent_version`.
 - **Pass/fail verdict** — a case passes when every deterministic check passes AND every LLM criterion passes its threshold: scale `score >= ceil((min+max)/2)`; bool `score == True`; inverted bool `score == False`.
 - **Run history API** — `GET /runs` lists all runs (newest first); `GET /runs/{id}` returns the full run with all `CaseResult` rows (scores, trace, deterministic checks).
-- **Tests** — 91 tests total (36 pre-existing + 22 checks + 21 judge + 12 runner), all green.
+- **Tests** — 91 tests total (36 pre-existing + 22 checks + 21 judge + 12 runner), all green. M5 adds 5 more integration tests.
 
 ### M3 — agent adapter + sample agent (also done)
 
@@ -55,7 +63,7 @@ Vibes-based testing doesn't scale: the agent works on three hand-picked examples
 - **SQLite** — local, single-file, zero infra
 - **Claude** — LLM-as-judge for rubric scoring (configurable model, default `claude-haiku-4-5-20251001`)
 
-> The web UI is planned for M6. As of M4, the runner, judge, and SQLite persistence are functional; the REST API exposes run history at `GET /runs` and `GET /runs/{id}`.
+> The web UI is planned for M6. As of M5, the full REST API is live: suite CRUD, run start (202 + background execution), run history, and a live SSE progress stream. OpenAPI docs at `http://localhost:8000/docs`.
 
 ## Quickstart
 
@@ -102,7 +110,7 @@ make format    # ruff format + prettier
 | M2 | Rubric + dataset schemas, Pydantic loaders, example files | done |
 | M3 | AgentAdapter protocol, InProcessAdapter, HttpAdapter, sample support agent | done |
 | M4 | Eval runner, deterministic checks, LLM-as-judge, self-consistency, SQLite persistence | done |
-| M5 | Full run management API (POST /runs, suite CRUD) | planned |
+| M5 | Full run management API (POST /runs, suite CRUD, SSE streaming) | done |
 | M6 | Web UI — run list, case drill-down, side-by-side diff | planned |
 
 <!-- TODO: add M6+ milestones as scope becomes clearer -->
