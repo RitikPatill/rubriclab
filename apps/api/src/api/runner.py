@@ -73,6 +73,7 @@ def run_eval(
     agent_version: str = "unknown",
     judge_config: JudgeConfig | None = None,
     judge_client=None,
+    run_id: str | None = None,
 ) -> Run:
     """Execute a full evaluation run and persist results to the database.
 
@@ -85,6 +86,8 @@ def run_eval(
         agent_version: Human-readable version tag for the agent under test.
         judge_config: LLM judge settings (model, N samples).
         judge_client: Optional pre-built Anthropic client (for testing).
+        run_id: If provided, re-use an existing Run row (created by the API
+                handler) instead of inserting a new one.
 
     Returns:
         The completed Run record.
@@ -92,18 +95,24 @@ def run_eval(
     if judge_config is None:
         judge_config = JudgeConfig()
 
-    run = Run(
-        id=str(uuid.uuid4()),
-        suite_id=suite.id,
-        status="running",
-        git_sha=_get_git_sha(),
-        agent_version=agent_version,
-        started_at=datetime.now(timezone.utc),
-        total_cases=len(dataset),
-        passed_cases=0,
-    )
-    db.add(run)
-    db.commit()
+    if run_id is not None:
+        run = db.query(Run).filter(Run.id == run_id).first()
+        run.status = "running"
+        run.total_cases = len(dataset)
+        db.commit()
+    else:
+        run = Run(
+            id=str(uuid.uuid4()),
+            suite_id=suite.id,
+            status="running",
+            git_sha=_get_git_sha(),
+            agent_version=agent_version,
+            started_at=datetime.now(timezone.utc),
+            total_cases=len(dataset),
+            passed_cases=0,
+        )
+        db.add(run)
+        db.commit()
 
     passed = 0
     try:
