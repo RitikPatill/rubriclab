@@ -6,6 +6,16 @@ Rubric-driven evaluation harness for LLM agents. Point it at an agent, give it a
 
 Vibes-based testing doesn't scale: the agent works on three hand-picked examples, then quietly regresses on the fourth. Existing tools are either heavyweight SaaS observability platforms that want your data, or raw `pytest` matchers that can't grade open-ended outputs. RubricLab sits in the middle — rubric-driven LLM-as-judge scoring with a run-history UI so regressions are obvious at a glance.
 
+## What works (M6 — web UI: runs + run detail)
+
+- **Runs list** — `GET /` lists all evaluation runs with status badges (pending / running / completed / failed), pass-rate (`N / N (xx%)`), start time, and duration. Empty-state shows the POST endpoint snippet.
+- **Run detail** — `GET /runs/[id]` shows run metadata (suite, agent version, git SHA, timing, pass rate), a live SSE progress bar while the run is `"running"`, and a per-case table with one column per rubric criterion showing `<ScoreCell />` scores.
+- **Case trace viewer** — `GET /runs/[id]/cases/[caseId]` renders the agent output, tool-call trace event-by-event (TOOL / RESULT / text / error badges), per-criterion judge scores with reasoning, and deterministic check results.
+- **Dark mode** — `next-themes` wraps the app with `defaultTheme="system"`; a sun/moon toggle button in the nav bar switches themes. All CSS variables defined in `globals.css` handle light and dark palettes automatically.
+- **CORS** — FastAPI now allows `http://localhost:3000` so the browser can call the API directly.
+- **Typed API layer** — [`apps/web/src/lib/types.ts`](apps/web/src/lib/types.ts) mirrors all API schemas; [`apps/web/src/lib/api.ts`](apps/web/src/lib/api.ts) provides typed `listRuns()`, `getRun()`, and `listSuites()` wrappers used by server components.
+- **shadcn/ui components** — Badge, Table, Card, Progress, Separator, Button installed and used throughout.
+
 ## What works (M5 — REST API + run streaming)
 
 - **Suite CRUD** — `POST /suites` creates a (rubric, dataset) pair; `GET /suites` and `GET /suites/{id}` list and fetch them.
@@ -59,11 +69,11 @@ Vibes-based testing doesn't scale: the agent works on three hand-picked examples
 ## Architecture
 
 - **FastAPI** (`apps/api`, port 8000) — eval runner, LLM judge, SQLite persistence
-- **Next.js** (`apps/web`, port 3000) — run list, case drill-down, side-by-side diff
+- **Next.js** (`apps/web`, port 3000) — run list, run detail, case trace viewer
 - **SQLite** — local, single-file, zero infra
 - **Claude** — LLM-as-judge for rubric scoring (configurable model, default `claude-haiku-4-5-20251001`)
 
-> The web UI is planned for M6. As of M5, the full REST API is live: suite CRUD, run start (202 + background execution), run history, and a live SSE progress stream. OpenAPI docs at `http://localhost:8000/docs`.
+> As of M6, both the API and web UI are live. Open `http://localhost:3000` for the runs list. OpenAPI docs at `http://localhost:8000/docs`.
 
 ## Quickstart
 
@@ -111,7 +121,7 @@ make format    # ruff format + prettier
 | M3 | AgentAdapter protocol, InProcessAdapter, HttpAdapter, sample support agent | done |
 | M4 | Eval runner, deterministic checks, LLM-as-judge, self-consistency, SQLite persistence | done |
 | M5 | Full run management API (POST /runs, suite CRUD, SSE streaming) | done |
-| M6 | Web UI — run list, case drill-down, side-by-side diff | planned |
+| M6 | Web UI — run list, run detail, case trace viewer, dark mode | done |
 
 <!-- TODO: add M6+ milestones as scope becomes clearer -->
 
