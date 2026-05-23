@@ -85,3 +85,36 @@ class CaseResultResponse(BaseModel):
 
 class RunDetail(RunSummary):
     cases: list[CaseResultResponse]
+
+
+class ScoreDelta(BaseModel):
+    a: int | bool | None
+    b: int | bool | None
+    delta: float | None  # b - a for numeric; None for bool or missing
+
+
+class CaseComparison(BaseModel):
+    case_id: str
+    a_passed: bool | None  # None = case absent in that run
+    b_passed: bool | None
+    flipped: bool  # True when both present and a_passed != b_passed
+    score_deltas: dict[str, ScoreDelta]
+
+
+class RunComparison(BaseModel):
+    run_a: RunSummary
+    run_b: RunSummary
+    cases: list[CaseComparison]
+
+
+class RubricContent(BaseModel):
+    content: str  # raw YAML text
+    path: str  # absolute file path (informational)
+
+
+class RubricUpdate(BaseModel):
+    content: str
+
+
+class CloneSuiteRequest(BaseModel):
+    name: str

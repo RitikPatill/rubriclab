@@ -59,6 +59,7 @@ export default async function Home() {
             <TableHead>Pass rate</TableHead>
             <TableHead>Started</TableHead>
             <TableHead>Duration</TableHead>
+            <TableHead></TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -82,6 +83,14 @@ export default async function Home() {
               </TableCell>
               <TableCell className="text-sm text-muted-foreground">
                 {formatDuration(run.started_at, run.completed_at)}
+              </TableCell>
+              <TableCell>
+                <Link
+                  href={`/compare?a=${run.id}`}
+                  className="text-xs hover:underline"
+                >
+                  Compare →
+                </Link>
               </TableCell>
             </TableRow>
           ))}
