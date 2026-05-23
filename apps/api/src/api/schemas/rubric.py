@@ -51,3 +51,8 @@ def load_rubric(path) -> Rubric:
     with open(path, encoding="utf-8") as f:
         data = yaml.safe_load(f)
     return Rubric.model_validate(data)
+
+
+def load_rubric_from_string(content: str) -> Rubric:
+    data = yaml.safe_load(content)
+    return Rubric.model_validate(data)

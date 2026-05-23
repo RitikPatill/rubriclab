@@ -30,12 +30,20 @@ export default async function RunPage({
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <Link href="/" className="hover:underline">
-          Runs
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Link href="/" className="hover:underline">
+            Runs
+          </Link>
+          <span>/</span>
+          <span className="font-mono">{run.id.slice(0, 8)}…</span>
+        </div>
+        <Link
+          href={`/compare?a=${run.id}`}
+          className="text-xs hover:underline text-muted-foreground"
+        >
+          Compare →
         </Link>
-        <span>/</span>
-        <span className="font-mono">{run.id.slice(0, 8)}…</span>
       </div>
 
       {/* Run metadata card */}

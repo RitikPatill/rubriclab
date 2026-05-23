@@ -6,6 +6,15 @@ Rubric-driven evaluation harness for LLM agents. Point it at an agent, give it a
 
 Vibes-based testing doesn't scale: the agent works on three hand-picked examples, then quietly regresses on the fourth. Existing tools are either heavyweight SaaS observability platforms that want your data, or raw `pytest` matchers that can't grade open-ended outputs. RubricLab sits in the middle — rubric-driven LLM-as-judge scoring with a run-history UI so regressions are obvious at a glance.
 
+## What works (M7 — run comparison + rubric editor)
+
+- **Run comparison** — `GET /compare?a=RUN_A&b=RUN_B` renders two run summary cards side-by-side with a per-case table. Rows where pass/fail flipped between runs are highlighted in yellow; each rubric criterion shows a numeric delta (`+2`, `−1`, `—`) colour-coded green/red/muted.
+- **Compare picker** — `GET /compare?a=RUN_A` shows run A's summary card and a `<select>` populated from all other runs; submitting navigates to the full diff view. Every row in the runs list now has a "Compare →" link that pre-fills run A.
+- **Compare button on run detail** — the breadcrumb row of `/runs/[id]` gains a right-aligned "Compare →" link.
+- **Rubric editor** — `GET /suites/[id]/rubric` opens a `<textarea>` pre-loaded with the suite's YAML file. Edits are validated live (js-yaml parse + schema checks); the Save button is disabled while the YAML is invalid. `PUT /suites/{id}/rubric` writes the file back only after Pydantic schema validation passes.
+- **Clone rubric** — an inline "Clone rubric" panel lets you name a new suite; clicking Clone calls `POST /suites/{id}/clone`, copies the rubric YAML file, shares the same dataset, and redirects the browser to the clone's rubric editor.
+- **Four new API routes** — `GET /runs/compare`, `GET /suites/{id}/rubric`, `PUT /suites/{id}/rubric`, `POST /suites/{id}/clone` — all covered by pytest tests (`test_compare.py`, `test_rubric_editor.py`).
+
 ## What works (M6 — web UI: runs + run detail)
 
 - **Runs list** — `GET /` lists all evaluation runs with status badges (pending / running / completed / failed), pass-rate (`N / N (xx%)`), start time, and duration. Empty-state shows the POST endpoint snippet.
@@ -69,11 +78,11 @@ Vibes-based testing doesn't scale: the agent works on three hand-picked examples
 ## Architecture
 
 - **FastAPI** (`apps/api`, port 8000) — eval runner, LLM judge, SQLite persistence
-- **Next.js** (`apps/web`, port 3000) — run list, run detail, case trace viewer
+- **Next.js** (`apps/web`, port 3000) — run list, run detail, case trace viewer, run comparison (`/compare`), rubric editor (`/suites/[id]/rubric`)
 - **SQLite** — local, single-file, zero infra
 - **Claude** — LLM-as-judge for rubric scoring (configurable model, default `claude-haiku-4-5-20251001`)
 
-> As of M6, both the API and web UI are live. Open `http://localhost:3000` for the runs list. OpenAPI docs at `http://localhost:8000/docs`.
+> As of M7, run comparison and rubric editing are live. Open `http://localhost:3000` for the runs list. OpenAPI docs at `http://localhost:8000/docs`.
 
 ## Quickstart
 
@@ -122,8 +131,7 @@ make format    # ruff format + prettier
 | M4 | Eval runner, deterministic checks, LLM-as-judge, self-consistency, SQLite persistence | done |
 | M5 | Full run management API (POST /runs, suite CRUD, SSE streaming) | done |
 | M6 | Web UI — run list, run detail, case trace viewer, dark mode | done |
-
-<!-- TODO: add M6+ milestones as scope becomes clearer -->
+| M7 | Run comparison (side-by-side diff), in-UI rubric editor, clone rubric | done |
 
 ## License
 

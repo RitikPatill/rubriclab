@@ -62,3 +62,28 @@ export interface SSEDoneEvent {
   status: string;
   run_id: string;
 }
+
+export interface ScoreDelta {
+  a: number | boolean | null;
+  b: number | boolean | null;
+  delta: number | null;
+}
+
+export interface CaseComparison {
+  case_id: string;
+  a_passed: boolean | null;
+  b_passed: boolean | null;
+  flipped: boolean;
+  score_deltas: Record<string, ScoreDelta>;
+}
+
+export interface RunComparison {
+  run_a: RunSummary;
+  run_b: RunSummary;
+  cases: CaseComparison[];
+}
+
+export interface RubricContent {
+  content: string;
+  path: string;
+}
