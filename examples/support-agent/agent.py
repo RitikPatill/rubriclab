@@ -175,8 +175,8 @@ Guidelines:
 # ---------------------------------------------------------------------------
 
 
-def run(input: str) -> "AgentResult":  # noqa: F821 — imported at call-time
-    """Run the support agent and return an :class:`AgentResult`."""
+def _run_with_prompt(input: str, system_prompt: str) -> "AgentResult":  # noqa: F821
+    """Core agent loop — shared by :func:`run` and :func:`make_run` closures."""
     from api.adapters.base import AgentResult, TraceEvent  # lazy to avoid circular at module level
 
     client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
@@ -187,7 +187,7 @@ def run(input: str) -> "AgentResult":  # noqa: F821 — imported at call-time
         response = client.messages.create(
             model="claude-haiku-4-5-20251001",
             max_tokens=1024,
-            system=SYSTEM_PROMPT,
+            system=system_prompt,
             tools=TOOLS,  # type: ignore[arg-type]
             messages=messages,  # type: ignore[arg-type]
         )
@@ -240,6 +240,18 @@ def run(input: str) -> "AgentResult":  # noqa: F821 — imported at call-time
         # Append assistant turn + tool results and loop
         messages.append({"role": "assistant", "content": response.content})  # type: ignore[arg-type]
         messages.append({"role": "user", "content": tool_results})
+
+
+def run(input: str) -> "AgentResult":  # noqa: F821 — imported at call-time
+    """Run the support agent and return an :class:`AgentResult`."""
+    return _run_with_prompt(input, SYSTEM_PROMPT)
+
+
+def make_run(system_prompt: str):
+    """Return a run-compatible callable that uses *system_prompt* instead of the default."""
+    def _run(input: str) -> "AgentResult":  # noqa: F821
+        return _run_with_prompt(input, system_prompt)
+    return _run
 
 
 # ---------------------------------------------------------------------------
