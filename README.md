@@ -1,5 +1,9 @@
 # RubricLab
 
+
+> **Video walkthrough:** https://youtu.be/ZxXpCgOj6Ek
+> **60-second overview:** https://youtu.be/yKHDELiphXc
+
 > Open-source eval harness for LLM agents: define rubrics, run agents against test cases, score with LLM-as-judge, and diff runs in a web UI.
 
 <!-- TODO: replace with a 5-10 second demo gif. Record with ScreenToGif on
