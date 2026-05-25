@@ -1,163 +1,94 @@
 # RubricLab
 
-Rubric-driven evaluation harness for LLM agents. Point it at an agent, give it a dataset and a rubric, get structured pass/fail scores and a diff-able run history.
+> Open-source eval harness for LLM agents: define rubrics, run agents against test cases, score with LLM-as-judge, and diff runs in a web UI.
 
-## Why this exists
+<!-- TODO: replace with a 5-10 second demo gif. Record with ScreenToGif on
+     Windows or peek on macOS. Save to docs/demo.gif and update path here. -->
+![demo](docs/demo.gif)
 
-Vibes-based testing doesn't scale: the agent works on three hand-picked examples, then quietly regresses on the fourth. Existing tools are either heavyweight SaaS observability platforms that want your data, or raw `pytest` matchers that can't grade open-ended outputs. RubricLab sits in the middle — rubric-driven LLM-as-judge scoring with a run-history UI so regressions are obvious at a glance.
+## What it is
 
-## What works (M8 — demo + screenshots)
+RubricLab is a local-first evaluation harness for LLM agents. You give it a YAML rubric—graded criteria like `helpfulness: 1–5` or `pii_leaked: bool`—and a JSONL dataset of test cases, then point it at any agent: a Python callable or an HTTP endpoint returning `{output, trace}`. It runs each case through deterministic checks first (exact match, regex, JSON-schema, tool-call assertions), then calls Claude as a structured judge to score every rubric criterion and return its reasoning as JSON. Every run is stored in SQLite, tagged with the git SHA and agent version, and survives partial failures.
 
-- **`make demo`** — one command seeds two complete evaluation runs and leaves both servers running for screenshot / screen-recording. Calls `scripts/record_demo.sh` which: loads `.env`, starts the API (`uvicorn`) and web dev server (`npm run dev`), waits for the `/health` endpoint, then runs `scripts/seed_demo.py`.
-- **`scripts/seed_demo.py`** — standalone script (no FastAPI required). Creates one Suite, calls the eval runner twice — once with a terse escalation-happy v1 prompt and once with the full KB-first v2 prompt — and prints the runs list URL plus the side-by-side comparison URL.
-- **`make_run()` factory in `agent.py`** — `examples/support-agent/agent.py` now exports `make_run(system_prompt)` which returns a run-compatible callable. The existing `run()` is unchanged; both delegate to a shared `_run_with_prompt()` helper.
-- **`docs/screenshot.png`** — runs dashboard screenshot (placeholder PNG committed; replace with a live screenshot after running `make demo`).
-- **`docs/demo.gif`** — screen-recording placeholder (replace with LICEcap / peek recording).
-
-### Running the demo
-
-```bash
-git clone <repo>
-cd rubriclab
-cp .env.example .env
-# edit .env — set ANTHROPIC_API_KEY=sk-...
-make install
-make demo
-# open http://localhost:3000  →  two completed runs with pass-rate badges
-# open the printed /compare URL  →  side-by-side diff with flipped cases highlighted
-# press Ctrl+C to stop the servers
-```
-
-![Runs dashboard](docs/screenshot.png)
-
-## What works (M7 — run comparison + rubric editor)
-
-- **Run comparison** — `GET /compare?a=RUN_A&b=RUN_B` renders two run summary cards side-by-side with a per-case table. Rows where pass/fail flipped between runs are highlighted in yellow; each rubric criterion shows a numeric delta (`+2`, `−1`, `—`) colour-coded green/red/muted.
-- **Compare picker** — `GET /compare?a=RUN_A` shows run A's summary card and a `<select>` populated from all other runs; submitting navigates to the full diff view. Every row in the runs list now has a "Compare →" link that pre-fills run A.
-- **Compare button on run detail** — the breadcrumb row of `/runs/[id]` gains a right-aligned "Compare →" link.
-- **Rubric editor** — `GET /suites/[id]/rubric` opens a `<textarea>` pre-loaded with the suite's YAML file. Edits are validated live (js-yaml parse + schema checks); the Save button is disabled while the YAML is invalid. `PUT /suites/{id}/rubric` writes the file back only after Pydantic schema validation passes.
-- **Clone rubric** — an inline "Clone rubric" panel lets you name a new suite; clicking Clone calls `POST /suites/{id}/clone`, copies the rubric YAML file, shares the same dataset, and redirects the browser to the clone's rubric editor.
-- **Four new API routes** — `GET /runs/compare`, `GET /suites/{id}/rubric`, `PUT /suites/{id}/rubric`, `POST /suites/{id}/clone` — all covered by pytest tests (`test_compare.py`, `test_rubric_editor.py`).
-
-## What works (M6 — web UI: runs + run detail)
-
-- **Runs list** — `GET /` lists all evaluation runs with status badges (pending / running / completed / failed), pass-rate (`N / N (xx%)`), start time, and duration. Empty-state shows the POST endpoint snippet.
-- **Run detail** — `GET /runs/[id]` shows run metadata (suite, agent version, git SHA, timing, pass rate), a live SSE progress bar while the run is `"running"`, and a per-case table with one column per rubric criterion showing `<ScoreCell />` scores.
-- **Case trace viewer** — `GET /runs/[id]/cases/[caseId]` renders the agent output, tool-call trace event-by-event (TOOL / RESULT / text / error badges), per-criterion judge scores with reasoning, and deterministic check results.
-- **Dark mode** — `next-themes` wraps the app with `defaultTheme="system"`; a sun/moon toggle button in the nav bar switches themes. All CSS variables defined in `globals.css` handle light and dark palettes automatically.
-- **CORS** — FastAPI now allows `http://localhost:3000` so the browser can call the API directly.
-- **Typed API layer** — [`apps/web/src/lib/types.ts`](apps/web/src/lib/types.ts) mirrors all API schemas; [`apps/web/src/lib/api.ts`](apps/web/src/lib/api.ts) provides typed `listRuns()`, `getRun()`, and `listSuites()` wrappers used by server components.
-- **shadcn/ui components** — Badge, Table, Card, Progress, Separator, Button installed and used throughout.
-
-## What works (M5 — REST API + run streaming)
-
-- **Suite CRUD** — `POST /suites` creates a (rubric, dataset) pair; `GET /suites` and `GET /suites/{id}` list and fetch them.
-- **Run management** — `POST /suites/{suite_id}/runs` returns 202 Accepted immediately (run ID + `"pending"` status) and executes the eval in a background thread. Requires `agent_url` and optional `agent_version` in the request body.
-- **Live SSE stream** — `GET /runs/{run_id}/stream` emits `progress` events as each case completes and a final `done` event when the run finishes, using Server-Sent Events (`text/event-stream`).
-- **Typed response models** — [`apps/api/src/api/schemas/api.py`](apps/api/src/api/schemas/api.py) defines `SuiteCreate`, `SuiteResponse`, `RunStartRequest`, `RunStartResponse`, `RunSummary`, `RunDetail`, and `CaseResultResponse`; every endpoint declares a Pydantic `response_model` and FastAPI auto-generates OpenAPI docs at `/docs`.
-- **Integration tests** — `apps/api/tests/test_api.py` covers suite CRUD (including 404 handling), the start-run → poll → assert-scores flow (with a mock runner), and SSE endpoint sanity and 404 handling (5 tests). `apps/api/tests/conftest.py` provides a session-scoped DB initialisation fixture shared across all test modules.
-
-## What works (M4 — eval runner + LLM judge)
-
-- **Eval runner** — [`apps/api/src/api/runner.py`](apps/api/src/api/runner.py): iterates every test case, invokes the agent adapter, runs deterministic checks, calls the LLM judge, and persists all results to SQLite. Agent exceptions are caught per-case so one bad case never aborts a run.
-- **LLM-as-judge** — [`apps/api/src/api/judge.py`](apps/api/src/api/judge.py): builds a structured prompt with the rubric, test-case input, agent output, and execution trace; calls Claude and parses the JSON response into per-criterion `CriterionScore` objects. **Self-consistency mode** — set `JudgeConfig(samples=N)` to sample the judge N times and aggregate (median for scale criteria, majority vote for bool criteria).
-- **Deterministic checks** — [`apps/api/src/api/checks.py`](apps/api/src/api/checks.py): four check types that run alongside the LLM judge and are included in the pass/fail verdict:
-  - `exact_match` — stripped string equality
-  - `regex` — `re.search` against agent output
-  - `json_schema` — validates agent output JSON against a JSON Schema
-  - tool-call assertions via `expected_tool_calls` in the test case (inspects the execution trace)
-- **SQLite persistence** — [`apps/api/src/api/models.py`](apps/api/src/api/models.py) defines `Suite`, `Run`, and `CaseResult`; [`db.py`](apps/api/src/api/db.py) manages the engine and session. Every run is immutable; rows are committed case-by-case so partial results survive a crash. Each run is tagged with `git_sha` and `agent_version`.
-- **Pass/fail verdict** — a case passes when every deterministic check passes AND every LLM criterion passes its threshold: scale `score >= ceil((min+max)/2)`; bool `score == True`; inverted bool `score == False`.
-- **Run history API** — `GET /runs` lists all runs (newest first); `GET /runs/{id}` returns the full run with all `CaseResult` rows (scores, trace, deterministic checks).
-- **Tests** — 91 tests total (36 pre-existing + 22 checks + 21 judge + 12 runner), all green. M5 adds 5 more integration tests.
-
-### M3 — agent adapter + sample agent (also done)
-
-- **`AgentAdapter` protocol** — `run(input: str) -> AgentResult` contract. `AgentResult` carries `output: str` and `trace: list[TraceEvent]`. `TraceEvent` records `tool_call`, `tool_result`, `text`, or `error` events with ISO timestamps. See [`apps/api/src/api/adapters/`](apps/api/src/api/adapters/).
-- **`InProcessAdapter`** — wraps any Python callable `fn(input) -> AgentResult | str` for in-process evaluation. Normalises plain `str` returns automatically.
-- **`HttpAdapter`** — POSTs `{"input": "..."}` to any HTTP endpoint and validates the JSON response as `AgentResult`; supports custom headers and configurable timeout.
-- **Sample support agent** — [`examples/support-agent/agent.py`](examples/support-agent/agent.py) uses the Anthropic SDK with three fake tools (`kb_search`, `order_lookup`, `escalate_to_human`). All tool responses are deterministic stubs — no real integrations needed for demos. Requires `ANTHROPIC_API_KEY` only for the Claude API call.
-
-    ```bash
-    # Run the sample agent from the repo root
-    cd apps/api && python -m pip install -e ".[dev]"
-    ANTHROPIC_API_KEY=sk-... python ../../examples/support-agent/agent.py "Where is my order #12345?"
-    ```
-
-### M2 — rubric + dataset schemas (also done)
-
-- **Rubric DSL** — YAML files with named criteria of type `scale` (min/max range) or `bool` (pass/fail, optionally `invert`ed). Each criterion has an `id`, `description`, optional `weight`, and optional `invert` flag. See [`examples/support-agent/rubric.yaml`](examples/support-agent/rubric.yaml).
-- **Dataset format** — JSONL files; one test case per line with `id`, `input`, `expected_behavior`, optional `expected_tool_calls`, optional `checks`, and `tags`. See [`examples/support-agent/dataset.jsonl`](examples/support-agent/dataset.jsonl).
-- **Pydantic loaders** — `load_rubric(path)` and `load_dataset(path)` validate inputs, wrap errors with line numbers, and detect duplicates.
-- **15-case example dataset** — covers password reset, billing disputes, refunds, shipping, product compatibility, security escalations, and technical support.
-
-### M1 — scaffold (also done)
-
-- **Monorepo layout** — `apps/api` (FastAPI, Python 3.11+, src layout) and `apps/web` (Next.js 14, TypeScript)
-- **Python tooling** — `pyproject.toml` with `ruff` for lint/format, `pytest` with a passing smoke test
-- **JavaScript tooling** — ESLint, Prettier, Tailwind CSS, shadcn/ui scaffolded (`components.json`)
-- **Makefile** — `make install`, `make dev`, `make test`, `make lint`, `make format` all functional
-- **Environment** — `.env.example` documents `ANTHROPIC_API_KEY`; both servers start cleanly via `make dev`
-
-## Architecture
-
-- **FastAPI** (`apps/api`, port 8000) — eval runner, LLM judge, SQLite persistence
-- **Next.js** (`apps/web`, port 3000) — run list, run detail, case trace viewer, run comparison (`/compare`), rubric editor (`/suites/[id]/rubric`)
-- **SQLite** — local, single-file, zero infra
-- **Claude** — LLM-as-judge for rubric scoring (configurable model, default `claude-haiku-4-5-20251001`)
-
-> As of M8, end-to-end demo is fully scripted via `make demo`. Open `http://localhost:3000` for the runs list. OpenAPI docs at `http://localhost:8000/docs`.
+The web UI shows pass-rate badges across all runs, lets you drill into individual cases to inspect tool-call traces and judge verdicts, and diffs two runs side by side so regressions are visible in one click. Nothing leaves your machine.
 
 ## Quickstart
 
+**Prerequisites:** Python 3.11+, Node 20+, `make`, an Anthropic API key. On Windows, run inside Git Bash or WSL2 (the Makefile uses `&` for background jobs).
+
 ```bash
+git clone https://github.com/RitikPatill/rubriclab.git
+cd rubriclab
 cp .env.example .env
-# edit .env and set ANTHROPIC_API_KEY
-make install
-make dev
+# Open .env and set ANTHROPIC_API_KEY=sk-ant-...
+make install    # pip install -e ".[dev]" + npm install
+make dev        # API → http://localhost:8000  ·  UI → http://localhost:3000
 ```
 
-## Development
-
-### Prerequisites
-
-- Python 3.11+
-- Node 20+
-- `make`
-- Git Bash or WSL2 (on Windows — the `&` background operator in the Makefile requires a POSIX shell)
-
-### Setup
+To seed two example runs and open the compare view immediately:
 
 ```bash
-cp .env.example .env
-make install   # pip install -e "[dev]" + npm install
-make test      # pytest + eslint
-make dev       # FastAPI on :8000, Next.js on :3000
+make demo
 ```
 
-> **Note (Python src layout):** `pytest` requires an editable install to resolve the `api` package.
-> Always run `make install` before `make test`, or prefix with `pip install -e ".[dev]"` inside `apps/api`.
+## Usage
 
-### Lint / Format
+Open `http://localhost:3000`. The runs dashboard lists every previous run with its pass-rate badge and git SHA.
+
+Select the bundled `support-agent` suite and click **Run eval**. The 15 test cases stream in live; each one resolves to pass/fail with per-criterion scores as it completes. Click a failing case to open the trace viewer: the agent's tool calls, the judge's verdict, and its reasoning per criterion appear inline — for example, "agent escalated to human despite KB containing the answer — `helpfulness: 2/5`."
+
+After changing the agent, trigger another run, then click **Compare runs**. Cases that flipped between pass and fail are highlighted with score deltas for each criterion. The in-UI rubric editor lets you tweak criteria and save without touching files; **Clone suite** creates a new suite against the same dataset so the original is preserved.
 
 ```bash
-make lint      # ruff check + eslint
-make format    # ruff format + prettier
+# The REST API is usable directly. Stream live progress for a run:
+curl -N http://localhost:8000/runs/{run_id}/stream
+```
+
+## Architecture
+
+```mermaid
+flowchart LR
+    UI[Next.js UI] -->|REST| API[FastAPI]
+    API --> Runner[Eval Runner]
+    Runner -->|spawn| Agent[Agent Under Test]
+    Runner -->|grade| Judge[LLM Judge · Claude]
+    Runner --> DB[(SQLite: runs, cases, scores)]
+    API --> DB
+    UI -->|SSE| Runner
+```
+
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for component breakdown and design decisions.
+
+## Project structure
+
+```
+rubriclab/
+├── apps/
+│   ├── api/            FastAPI backend — runner, judge, adapters, SQLite persistence
+│   └── web/            Next.js frontend — runs list, run detail, compare, rubric editor
+├── examples/
+│   └── support-agent/  Sample rubric (YAML), dataset (JSONL), and agent for the demo
+├── docs/               Architecture docs, roadmap, and demo assets
+├── scripts/            Demo seeding and recording helpers
+├── Makefile            dev, test, lint, format, and demo targets
+└── .env.example        Required environment variables
 ```
 
 ## Roadmap
 
-| Milestone | Scope | Status |
-|-----------|-------|--------|
-| M1 | Monorepo scaffold, tooling, CI baseline | done |
-| M2 | Rubric + dataset schemas, Pydantic loaders, example files | done |
-| M3 | AgentAdapter protocol, InProcessAdapter, HttpAdapter, sample support agent | done |
-| M4 | Eval runner, deterministic checks, LLM-as-judge, self-consistency, SQLite persistence | done |
-| M5 | Full run management API (POST /runs, suite CRUD, SSE streaming) | done |
-| M6 | Web UI — run list, run detail, case trace viewer, dark mode | done |
-| M7 | Run comparison (side-by-side diff), in-UI rubric editor, clone rubric | done |
-| M8 | Demo script, seed two runs, `make demo`, screenshot + GIF placeholders | done |
+- [ ] Replace `docs/screenshot.png` and `docs/demo.gif` with live captures from `make demo`.
+- [ ] Configurable judge model per-suite — stored in the Suite row instead of a global env var.
+- [ ] Hosted judge option — `JUDGE_ENDPOINT` for OpenAI-compatible or self-hosted models so the tool is not locked to Anthropic.
+- [ ] Dataset import from production traces — a CLI that reads OpenTelemetry / LangSmith / Langfuse exports and converts them to JSONL test cases.
+- [ ] Export endpoints — `GET /runs/{id}/export.csv` and `/export.json` for downstream notebook analysis.
 
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+---
+
+Built autonomously by [autodev](https://github.com/RitikPatill/autodev),
+a multi-agent orchestrator I designed. Each commit in this repo was
+authored by me; the implementation work was performed by Sonnet under
+the orchestrator's control. Read the orchestrator's README to see how.
